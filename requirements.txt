@@ -42,4 +42,3 @@ pytest-cov==6.0.0
 python-multipart==0.0.20
 python-dotenv==1.0.1
 tenacity==9.0.0
-structlog==24.4.0
