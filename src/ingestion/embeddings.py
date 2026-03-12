@@ -1,6 +1,6 @@
 """
 Embedding generation using OpenAI API.
-Handles batching, retries, and rate limit backoff.
+Handles batching, retries, circuit breaking, and rate limit backoff.
 """
 
 import logging
@@ -14,6 +14,7 @@ from tenacity import (
 )
 
 from src.config import Settings
+from src.security.circuit_breaker import CircuitBreaker
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,11 @@ class EmbeddingService:
         self._client = openai_client
         self._model = settings.embedding_model
         self._dimensions = settings.embedding_dimensions
+        self._circuit_breaker = CircuitBreaker(
+            service_name="openai_embeddings",
+            failure_threshold=5,
+            reset_timeout=30.0,
+        )
 
     @retry(
         retry=retry_if_exception_type(Exception),
@@ -36,12 +42,13 @@ class EmbeddingService:
         reraise=True,
     )
     async def _embed_batch(self, texts: list[str]) -> list[list[float]]:
-        """Embed a single batch with retries on failure."""
-        response = await self._client.embeddings.create(
-            input=texts,
-            model=self._model,
-            dimensions=self._dimensions,
-        )
+        """Embed a single batch with retries and circuit breaker."""
+        async with self._circuit_breaker:
+            response = await self._client.embeddings.create(
+                input=texts,
+                model=self._model,
+                dimensions=self._dimensions,
+            )
         # Return embeddings in input order
         sorted_data = sorted(response.data, key=lambda x: x.index)
         return [item.embedding for item in sorted_data]
