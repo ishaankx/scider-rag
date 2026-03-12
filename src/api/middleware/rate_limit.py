@@ -19,17 +19,25 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     Each IP gets a sorted set keyed by IP, scored by timestamp.
     """
 
-    def __init__(self, app, redis_pool: redis.Redis | None = None):
+    def __init__(self, app):
         super().__init__(app)
-        self._redis = redis_pool
+
+    def _get_redis(self) -> redis.Redis | None:
+        """Lazily resolve Redis — not available until after lifespan startup."""
+        try:
+            from src.dependencies import get_redis
+            return get_redis()
+        except RuntimeError:
+            return None
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         # Skip rate limiting for health checks
         if request.url.path.endswith("/health"):
             return await call_next(request)
 
-        # Skip if Redis is unavailable (graceful degradation)
-        if self._redis is None:
+        # Resolve Redis lazily (graceful degradation if unavailable)
+        redis_client = self._get_redis()
+        if redis_client is None:
             return await call_next(request)
 
         settings = get_settings()
@@ -39,7 +47,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         window_start = now - 60  # 1-minute sliding window
 
         try:
-            pipe = self._redis.pipeline()
+            pipe = redis_client.pipeline()
             # Remove entries older than the window
             pipe.zremrangebyscore(key, 0, window_start)
             # Count remaining entries

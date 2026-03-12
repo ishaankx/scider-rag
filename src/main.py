@@ -18,7 +18,7 @@ from src.api.v1 import health as health_router
 from src.api.v1 import ingest as ingest_router
 from src.api.v1 import query as query_router
 from src.config import get_settings
-from src.dependencies import get_redis, init_services, shutdown_services
+from src.dependencies import init_services, shutdown_services
 from src.storage.init_db import create_tables, ensure_qdrant_collection
 
 logger = logging.getLogger(__name__)
@@ -73,6 +73,9 @@ def create_app() -> FastAPI:
     # Security headers + body size limit
     application.add_middleware(SecurityMiddleware)
 
+    # Rate limiting — Redis resolved lazily after lifespan startup
+    application.add_middleware(RateLimitMiddleware)
+
     # CORS — restrictive by default, configurable for development
     application.add_middleware(
         CORSMiddleware,
@@ -105,12 +108,3 @@ def create_app() -> FastAPI:
 
 # Uvicorn entry point
 app = create_app()
-
-
-def _attach_rate_limiter():
-    """
-    Attach rate limiter after app creation.
-    Separated because Redis pool is only available after lifespan startup.
-    We register an on-startup hook that patches it in.
-    """
-    pass

@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field, field_validator
 
-from src.security.sanitizer import sanitize_text
+from src.security.sanitizer import check_sql_injection, sanitize_text
 
 
 class QueryRequest(BaseModel):
@@ -36,7 +36,10 @@ class QueryRequest(BaseModel):
     @field_validator("question")
     @classmethod
     def clean_question(cls, v: str) -> str:
-        return sanitize_text(v.strip())
+        cleaned = sanitize_text(v.strip())
+        if check_sql_injection(cleaned):
+            raise ValueError("Query contains disallowed patterns.")
+        return cleaned
 
 
 class SourceReference(BaseModel):
