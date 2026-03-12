@@ -1,0 +1,43 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Test artifacts
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Data files (mounted as volume, not baked into image)
+data/papers/*.pdf
+data/datasets/*.csv
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+*:Zone.Identifier
+
+# Environment
+.env
+.env.example
+
+# Documentation
+README.md
+LICENSE
