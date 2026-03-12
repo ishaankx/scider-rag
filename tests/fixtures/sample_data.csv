@@ -1,0 +1,11 @@
+compound_name,target_gene,mechanism,efficacy_percent,phase,disease
+Imatinib,BCR-ABL,tyrosine kinase inhibitor,95.2,Approved,Chronic Myeloid Leukemia
+Trastuzumab,HER2,monoclonal antibody,84.7,Approved,Breast Cancer
+Pembrolizumab,PD-1,immune checkpoint inhibitor,78.3,Approved,Melanoma
+Olaparib,PARP,enzyme inhibitor,72.1,Approved,Ovarian Cancer
+Remdesivir,RdRp,nucleotide analog,68.5,Approved,COVID-19
+Venetoclax,BCL-2,BH3 mimetic,88.9,Approved,CLL
+Osimertinib,EGFR,kinase inhibitor,91.4,Approved,NSCLC
+Ruxolitinib,JAK1/2,kinase inhibitor,76.8,Approved,Myelofibrosis
+Ibrutinib,BTK,kinase inhibitor,82.5,Approved,Mantle Cell Lymphoma
+Lenvatinib,VEGFR,multi-kinase inhibitor,69.3,Approved,Thyroid Cancer

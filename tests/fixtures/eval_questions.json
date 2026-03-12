@@ -1,0 +1,37 @@
+[
+  {
+    "question": "What is CRISPR-Cas9 and how does it work for gene editing?",
+    "expected_answer": "CRISPR-Cas9 is a gene editing tool that uses a guide RNA to direct the Cas9 enzyme to a specific DNA sequence, where it makes a double-strand break that can be repaired to introduce changes.",
+    "expected_source_keywords": ["CRISPR", "Cas9", "gene editing", "guide RNA"]
+  },
+  {
+    "question": "How do transformer models use attention mechanisms to process sequential data?",
+    "expected_answer": "Transformers use self-attention to compute weighted relationships between all tokens in a sequence simultaneously, allowing the model to capture long-range dependencies without recurrence.",
+    "expected_source_keywords": ["transformer", "attention", "self-attention", "tokens"]
+  },
+  {
+    "question": "What is quantum entanglement and why is it useful for quantum computing?",
+    "expected_answer": "Quantum entanglement links the quantum states of two or more qubits so that measuring one instantly determines the state of the others. This enables quantum parallelism and is key to quantum algorithms like Shor's and Grover's.",
+    "expected_source_keywords": ["entanglement", "qubit", "quantum", "superposition"]
+  },
+  {
+    "question": "What are the main challenges in mRNA vaccine development?",
+    "expected_answer": "Key challenges include mRNA stability, delivery mechanisms, immune response optimization, cold chain storage requirements, and scalable manufacturing.",
+    "expected_source_keywords": ["mRNA", "vaccine", "stability", "delivery"]
+  },
+  {
+    "question": "How does gradient descent optimize neural network parameters?",
+    "expected_answer": "Gradient descent minimizes the loss function by iteratively updating parameters in the direction opposite to the gradient, with variants like SGD, Adam, and RMSProp differing in how they adapt the learning rate.",
+    "expected_source_keywords": ["gradient descent", "loss", "backpropagation", "learning rate"]
+  },
+  {
+    "question": "What distinguishes superconducting materials and at what temperatures do they operate?",
+    "expected_answer": "Superconductors exhibit zero electrical resistance below a critical temperature. Conventional superconductors (e.g., niobium) require cooling near absolute zero, while high-temperature superconductors (cuprates) operate above liquid nitrogen temperatures (~77K).",
+    "expected_source_keywords": ["superconductor", "resistance", "critical temperature", "Cooper pair"]
+  },
+  {
+    "question": "Calculate the molarity of a solution with 58.44g NaCl in 2 liters of water.",
+    "expected_answer": "The molarity is 0.5M (58.44g / 58.44 g/mol = 1 mol, divided by 2L = 0.5 mol/L).",
+    "expected_source_keywords": ["molarity", "NaCl"]
+  }
+]
