@@ -25,6 +25,12 @@ ALLOWED_CONTENT_TYPES = {
 
 ALLOWED_EXTENSIONS = {".pdf", ".csv", ".json", ".txt"}
 
+# Magic byte signatures for file type verification (defense-in-depth)
+_MAGIC_BYTES: dict[str, list[bytes]] = {
+    ".pdf": [b"%PDF"],
+    ".json": [b"{", b"["],  # JSON starts with { or [
+}
+
 
 def _validate_extension(filename: str) -> str:
     """Validate file extension and return the source type."""
@@ -35,6 +41,20 @@ def _validate_extension(filename: str) -> str:
             detail=f"Unsupported file type '{ext}'. Allowed: {ALLOWED_EXTENSIONS}",
         )
     return ext.lstrip(".")
+
+
+def _validate_magic_bytes(content: bytes, filename: str) -> None:
+    """Verify file content matches the claimed extension via magic bytes."""
+    ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    signatures = _MAGIC_BYTES.get(ext)
+    if signatures is None:
+        return  # No magic bytes defined for this type (csv/txt are plaintext)
+    header = content[:8].lstrip()  # Strip leading whitespace for JSON
+    if not any(header.startswith(sig) for sig in signatures):
+        raise HTTPException(
+            status_code=400,
+            detail=f"File content does not match '{ext}' format. Possible spoofed extension.",
+        )
 
 
 @router.post("/ingest", response_model=IngestResponse)
@@ -64,6 +84,9 @@ async def ingest_document(
             status_code=413,
             detail=f"File too large. Maximum size is {settings.max_file_size_mb}MB.",
         )
+
+    # Verify magic bytes match claimed extension (defense-in-depth)
+    _validate_magic_bytes(content_bytes, safe_name)
 
     # Run ingestion pipeline
     pipeline = IngestionPipeline(
