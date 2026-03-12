@@ -104,6 +104,10 @@ class AgentOrchestrator:
             # Acquire lock to prevent cache stampede on identical queries
             lock_acquired = await self._cache.acquire_lock(question)
 
+            # Total pipeline timeout: agents make multiple LLM calls,
+            # so allow 3x the per-call timeout as the overall budget.
+            total_timeout = self._settings.llm_timeout_seconds * 3
+
             try:
                 # Double-check cache after acquiring lock
                 if not lock_acquired:
@@ -111,11 +115,27 @@ class AgentOrchestrator:
                     if cached:
                         result = cached
                     else:
-                        result = await self._run_pipeline(question, filters, max_sources)
+                        result = await asyncio.wait_for(
+                            self._run_pipeline(question, filters, max_sources),
+                            timeout=total_timeout,
+                        )
                         await self._cache.set(question, filters, result)
                 else:
-                    result = await self._run_pipeline(question, filters, max_sources)
+                    result = await asyncio.wait_for(
+                        self._run_pipeline(question, filters, max_sources),
+                        timeout=total_timeout,
+                    )
                     await self._cache.set(question, filters, result)
+            except asyncio.TimeoutError:
+                logger.error("Pipeline timed out after %ds for: %s", total_timeout, question[:60])
+                result = {
+                    "answer": "The query timed out. Please try a simpler question or retry later.",
+                    "sources": [],
+                    "retrieval_ms": 0,
+                    "reasoning_ms": 0,
+                    "confidence": 0.0,
+                    "tools_used": [],
+                }
             finally:
                 if lock_acquired:
                     await self._cache.release_lock(question)
