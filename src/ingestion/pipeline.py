@@ -53,7 +53,7 @@ class IngestionPipeline:
 
         # Register all file handlers (Open/Closed: add new handlers here)
         self._handlers: list[BaseHandler] = [
-            PdfHandler(),
+            PdfHandler(openai_client=openai_client, settings=settings),
             CsvHandler(),
             JsonHandler(),
         ]

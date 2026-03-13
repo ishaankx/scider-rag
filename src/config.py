@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     agent_max_iterations: int = 5
     retrieval_top_k: int = 10
 
+    # --- OCR / Vision ---
+    enable_ocr: bool = True
+    ocr_model: str = "gpt-4o-mini"
+    max_ocr_pages: int = 50
+    enable_image_analysis: bool = True
+
     # --- Sandbox ---
     sandbox_timeout_seconds: int = 10
     sandbox_max_memory_mb: int = 256
