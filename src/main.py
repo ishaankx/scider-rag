@@ -5,10 +5,11 @@ Creates the app, registers middleware, and mounts API routers.
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.responses import JSONResponse
+from starlette.responses import HTMLResponse, JSONResponse
 
 from src.api.middleware.rate_limit import RateLimitMiddleware
 from src.api.middleware.request_id import RequestIdMiddleware
@@ -104,6 +105,12 @@ def create_app() -> FastAPI:
             status_code=500,
             content={"error": "Internal server error", "detail": detail},
         )
+
+    # ── Chat UI ─────────────────────────────────────────────────────
+    @application.get("/", include_in_schema=False)
+    async def serve_ui():
+        html = (Path(__file__).parent / "static" / "index.html").read_text()
+        return HTMLResponse(html)
 
     return application
 
