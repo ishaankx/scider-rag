@@ -50,6 +50,35 @@ curl -N -X POST http://localhost:8001/api/v1/query/stream \
 
 ---
 
+## Environment Variables
+
+Copy `.env.example` to `.env` and set at minimum your OpenAI API key. All other values have sensible defaults for local development:
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENAI_API_KEY` | *(required)* | OpenAI API key |
+| `LLM_MODEL` | `gpt-4o-mini` | Chat completion model |
+| `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
+| `EMBEDDING_DIMENSIONS` | `1536` | Embedding vector dimensions |
+| `LLM_TEMPERATURE` | `0.1` | LLM sampling temperature |
+| `LLM_MAX_TOKENS` | `2048` | Max tokens per LLM response |
+| `LLM_TIMEOUT_SECONDS` | `30` | Per-call LLM timeout |
+| `DATABASE_URL` | `postgresql+asyncpg://...` | PostgreSQL connection |
+| `REDIS_URL` | `redis://redis:6379/0` | Redis connection |
+| `QDRANT_HOST` / `QDRANT_PORT` | `qdrant` / `6333` | Qdrant connection |
+| `CHUNK_SIZE` | `512` | Chunk size (chars) |
+| `CHUNK_OVERLAP` | `50` | Chunk overlap (chars) |
+| `RATE_LIMIT_PER_MINUTE` | `60` | Max requests per IP per minute |
+| `AGENT_MAX_ITERATIONS` | `5` | ReAct loop iteration cap |
+| `RETRIEVAL_TOP_K` | `10` | Max chunks retrieved per query |
+| `SANDBOX_TIMEOUT_SECONDS` | `10` | Code execution timeout |
+| `SANDBOX_MAX_MEMORY_MB` | `256` | Code execution memory limit |
+| `MAX_FILE_SIZE_MB` | `50` | Upload size limit |
+
+Database URLs, Redis URL, and Qdrant host are pre-configured in `.env.example` to match the Docker Compose service names — no changes needed for local development.
+
+---
+
 ## Feature Matrix
 
 | Requirement | Level | Implementation |
@@ -339,33 +368,6 @@ All services run as non-root users. The app container uses a dedicated `appuser`
 
 ---
 
-## Environment Variables
-
-Copy `.env.example` to `.env` and configure:
-
-| Variable | Default | Description |
-|---|---|---|
-| `OPENAI_API_KEY` | *(required)* | OpenAI API key |
-| `LLM_MODEL` | `gpt-4o-mini` | Chat completion model |
-| `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
-| `EMBEDDING_DIMENSIONS` | `1536` | Embedding vector dimensions |
-| `LLM_TEMPERATURE` | `0.1` | LLM sampling temperature |
-| `LLM_MAX_TOKENS` | `2048` | Max tokens per LLM response |
-| `LLM_TIMEOUT_SECONDS` | `30` | Per-call LLM timeout |
-| `DATABASE_URL` | `postgresql+asyncpg://...` | PostgreSQL connection |
-| `REDIS_URL` | `redis://redis:6379/0` | Redis connection |
-| `QDRANT_HOST` / `QDRANT_PORT` | `qdrant` / `6333` | Qdrant connection |
-| `CHUNK_SIZE` | `512` | Chunk size (chars) |
-| `CHUNK_OVERLAP` | `50` | Chunk overlap (chars) |
-| `RATE_LIMIT_PER_MINUTE` | `60` | Max requests per IP per minute |
-| `AGENT_MAX_ITERATIONS` | `5` | ReAct loop iteration cap |
-| `RETRIEVAL_TOP_K` | `10` | Max chunks retrieved per query |
-| `SANDBOX_TIMEOUT_SECONDS` | `10` | Code execution timeout |
-| `SANDBOX_MAX_MEMORY_MB` | `256` | Code execution memory limit |
-| `MAX_FILE_SIZE_MB` | `50` | Upload size limit |
-
----
-
 ## Known Limitations
 
 **Latency** — End-to-end query latency is 5–15 s on cache miss because the ReAct loop makes 2–4 sequential OpenAI API calls. The streaming endpoint mitigates perceived latency (the user sees progress live), and cache hits return in <50 ms.
@@ -393,3 +395,31 @@ Copy `.env.example` to `.env` and configure:
 **Incremental ingestion** — Currently, re-ingesting a modified file creates a new document record. A proper incremental pipeline would diff against existing chunks, update only what changed, and selectively re-embed — saving significant API cost on large corpora.
 
 **Observability** — Adding OpenTelemetry traces (spans for each pipeline step) and Prometheus metrics (query latency histograms, cache hit rates, LLM call counts) would give production-grade visibility into system behaviour under load.
+
+---
+
+## Interesting Problems Solved During Development
+
+### Null bytes in scientific PDFs crashed PostgreSQL inserts
+
+When ingesting older scientific papers (particularly LaTeX-generated PDFs from arXiv), the pipeline would fail silently during chunk storage. The error: PostgreSQL rejects `\x00` (null bytes) in text columns, and PyMuPDF's text extraction preserves them from the underlying PDF stream. These null bytes are invisible — the extracted text looks perfectly normal in logs and print statements.
+
+The fix was surgical: strip null bytes at two layers — once in the PDF handler immediately after extraction (`text.replace("\x00", "")`) and again in the ingestion pipeline before chunking, as a defence-in-depth measure. This is a real-world data quality issue that only surfaces when you work with actual scientific PDFs rather than clean test fixtures.
+
+### Grounding check was silently skipped on cache hits
+
+The hallucination detection feature worked perfectly on the first query but returned `null` when the same question was asked again with `check_grounding: true`. The bug: the original `run()` method cached the full result (including `grounding: null`) and returned it verbatim on cache hits, skipping the grounding check entirely.
+
+The insight was that grounding should *never* be cached — a cached answer may have been produced without grounding, and the user requesting `check_grounding: true` explicitly wants fresh verification. The fix restructures `run()` so grounding always runs *after* the cache lookup, on the final result regardless of its source. This is a subtle correctness bug that would have been invisible without the end-to-end test that verifies grounding on cache hits.
+
+### Cache stampede under concurrent load
+
+During the concurrency test (8 parallel identical queries), the pipeline would sometimes execute the full LLM pipeline 8 times simultaneously for the same question — wasting API credits and adding unnecessary load. The standard "check cache, miss, compute, store" pattern has a race window: between the cache miss and the store, all concurrent requests see the miss and all compute.
+
+The solution uses a Redis distributed lock (`SET key NX EX 30`): the first request acquires the lock and computes; others see the lock exists, wait briefly, then re-check the cache for the freshly-written result. This is the classic cache stampede / thundering herd pattern, but implementing it correctly with an async generator (for the streaming variant) required careful placement of `try/finally` to ensure lock release even if the generator is abandoned mid-stream.
+
+### Streaming needed an internal event type that clients never see
+
+The SSE streaming pipeline has three layers of async generators: `ReasoningAgent.execute_stream()` yields reasoning events, `AgentOrchestrator._run_pipeline_stream()` wraps it with retrieval events, and `AgentOrchestrator.run_stream()` adds cache and grounding. Each layer needs to pass a final structured result to its parent *without* forwarding it to the client.
+
+The solution was an internal `_result` event type: the innermost generator yields `("_result", AgentResult(...))` as its final event. The parent generator intercepts it, extracts the data, and never forwards it to the SSE stream. This avoids coupling the generators with return values (which don't work naturally with `async for`) and keeps each layer composable. The client only ever sees `status`, `sources`, `answer`, `done`, and `error` — the `_result` events are consumed internally and never serialized.
