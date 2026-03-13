@@ -485,6 +485,8 @@ All services run as non-root users. The app container uses a dedicated `appuser`
 
 **Evaluation dataset**: The fixture questions cover three domains but only 3–8 questions each. A real evaluation set should have 50–200 questions with ground-truth answers derived from the corpus.
 
+**Image analysis limited to raster images**: The image analysis feature uses PyMuPDF's `page.get_images()` to find embedded figures, which only detects raster images (PNG/JPEG). Most scientific papers (especially from arXiv) embed figures as vector graphics (PDF drawing operations), which are invisible to this API. The feature works correctly on PDFs with actual embedded raster images — verified with test PDFs showing `images_analyzed: 1` — but will report `images_analyzed: 0` on vector-heavy papers. A more robust approach would render each page as a raster image and use vision to detect figure regions, at the cost of higher API usage.
+
 ---
 
 ## What I Would Do Differently With More Time
