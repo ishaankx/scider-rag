@@ -533,7 +533,7 @@ The solution was an internal `_result` event type: the innermost generator yield
 
 ## AI Usage Transparency
 
-This project was built primarily by hand. Claude (Anthropic) was used as a development assistant for roughly **20–25%** of the overall effort, scoped to specific categories below. All architectural decisions, core pipeline logic, agent design, and system integration were written and reasoned through manually.
+This project was built primarily by hand. Claude was used as a development assistant for roughly **20–25%** of the overall effort, scoped to specific categories below. All architectural decisions, core pipeline logic, agent design, and system integration were written and reasoned through manually.
 
 ### Where AI was used
 
