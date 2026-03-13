@@ -227,7 +227,7 @@ flowchart LR
 
     style INGEST fill:#1e1e2e,stroke:#cdd6f4,color:#cdd6f4
     style FH fill:#313244,stroke:#a6e3a1,color:#cdd6f4
-    style PDF_ROUTE fill:#313244,stroke:#f9e2af,color:#1e1e2e
+    style PDF_ROUTE fill:#313244,stroke:#f9e2af,color:#cdd6f4
     style TEXT_EXT fill:#45475a,stroke:#a6e3a1,color:#cdd6f4
     style OCR fill:#45475a,stroke:#f38ba8,color:#cdd6f4
     style IMG fill:#45475a,stroke:#f38ba8,color:#cdd6f4
