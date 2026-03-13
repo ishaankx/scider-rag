@@ -161,6 +161,18 @@ Database URLs, Redis URL, and Qdrant host are pre-configured in `.env.example` t
 | **Content-hash deduplication** | SHA-256 hash of file content prevents re-ingestion of identical documents. Saves embedding API cost and avoids duplicate chunks in the vector store. |
 | **Security hardening** | Rate limiting, request ID tracking, magic byte file validation, input sanitization (XSS/SQL injection/path traversal), security headers, circuit breaker on external APIs, pipeline timeout. |
 
+### Chat UI
+
+The built-in chat interface serves at `http://localhost:8001` with a dark IDE-style theme, live streaming reasoning trace, source cards with relevance bars, and a grounding toggle.
+
+**Landing page**
+
+![Chat UI — landing page](images/image.png)
+
+**Query response with sources and reasoning trace**
+
+![Chat UI — query response](images/image2.jpeg)
+
 ---
 
 ## Architecture
