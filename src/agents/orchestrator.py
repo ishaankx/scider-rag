@@ -192,6 +192,131 @@ class AgentOrchestrator:
             "tools_used": reasoning_result.tool_calls_made,
         }
 
+    async def run_stream(
+        self,
+        question: str,
+        filters: dict | None = None,
+        max_sources: int = 5,
+        check_grounding: bool = False,
+    ):
+        """
+        Streaming variant of run(). Yields (event_type, data_dict) tuples.
+        Provides real-time visibility into every pipeline step.
+        Final yield is ("done", full_result_dict).
+        """
+        # Step 0: Cache check
+        yield ("status", {"step": "cache_check", "message": "Checking query cache..."})
+        cached = await self._cache.get(question, filters)
+
+        if cached:
+            yield ("status", {"step": "cache_check", "message": "Cache hit — returning cached result"})
+            result = cached
+        else:
+            yield ("status", {"step": "cache_check", "message": "Cache miss — running full pipeline"})
+            lock_acquired = await self._cache.acquire_lock(question)
+
+            try:
+                # Double-check cache after acquiring lock
+                if not lock_acquired:
+                    cached = await self._cache.get(question, filters)
+                    if cached:
+                        yield ("status", {"step": "cache_check", "message": "Cache populated by another request"})
+                        result = cached
+                    else:
+                        result = None
+                else:
+                    result = None
+
+                if result is None:
+                    pipeline_result = {}
+                    async for event in self._run_pipeline_stream(question, filters, max_sources):
+                        if event[0] == "_result":
+                            pipeline_result = event[1]
+                        else:
+                            yield event
+                    result = pipeline_result
+                    await self._cache.set(question, filters, result)
+            finally:
+                if lock_acquired:
+                    await self._cache.release_lock(question)
+
+        # Grounding check (never cached — always fresh when requested)
+        result = {**result, "grounding": None}
+        if check_grounding:
+            yield ("status", {"step": "grounding", "message": "Running hallucination detection..."})
+            grounding = await self._hallucination_detector.check(
+                answer=result["answer"],
+                sources=result["sources"],
+            )
+            result["grounding"] = {
+                "supported_count": grounding["supported_count"],
+                "unsupported_count": grounding["unsupported_count"],
+                "partial_count": grounding.get("partial_count", 0),
+                "confidence": grounding["confidence"],
+                "flags": grounding["flags"],
+            }
+            yield ("status", {
+                "step": "grounding",
+                "message": f"Grounding complete — {grounding['confidence']:.0%} claims supported",
+            })
+
+        yield ("done", result)
+
+    async def _run_pipeline_stream(
+        self,
+        question: str,
+        filters: dict | None,
+        max_sources: int,
+    ):
+        """Streaming variant of _run_pipeline. Yields events then final _result."""
+        context = AgentContext(
+            question=question,
+            filters=filters,
+            max_sources=max_sources,
+        )
+
+        # Retrieval
+        yield ("status", {"step": "retrieval", "message": "Planning search strategy..."})
+        async with _llm_semaphore:
+            retrieval_result = await self._retrieval_agent.execute(context)
+
+        n_chunks = len(context.retrieved_chunks)
+        best_score = max(
+            (c.get("relevance_score", 0) for c in context.retrieved_chunks), default=0
+        )
+        yield ("status", {
+            "step": "retrieval",
+            "message": f"Found {n_chunks} chunks (best score: {best_score:.3f})",
+        })
+
+        # Emit sources early so the client can render them immediately
+        sources = self._format_sources(context.retrieved_chunks[:max_sources])
+        yield ("sources", sources)
+
+        # Reasoning (streaming — emits tool_call and status events)
+        reasoning_result = None
+        async with _llm_semaphore:
+            async for event in self._reasoning_agent.execute_stream(context):
+                if event[0] == "_result":
+                    reasoning_result = event[1]
+                else:
+                    yield event
+
+        confidence = self._compute_confidence(context.retrieved_chunks)
+
+        # Emit the answer text as its own event for progressive rendering
+        yield ("answer", {"text": reasoning_result.output})
+
+        # Internal result — consumed by run_stream, not forwarded to client
+        yield ("_result", {
+            "answer": reasoning_result.output,
+            "sources": sources,
+            "retrieval_ms": retrieval_result.latency_ms,
+            "reasoning_ms": reasoning_result.latency_ms,
+            "confidence": confidence,
+            "tools_used": reasoning_result.tool_calls_made,
+        })
+
     def _format_sources(self, chunks: list[dict]) -> list[dict]:
         """Convert internal chunk format to API response format."""
         sources = []

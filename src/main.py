@@ -17,6 +17,7 @@ from src.api.v1 import eval as eval_router
 from src.api.v1 import health as health_router
 from src.api.v1 import ingest as ingest_router
 from src.api.v1 import query as query_router
+from src.api.v1 import stream as stream_router
 from src.config import get_settings
 from src.dependencies import init_services, shutdown_services
 from src.storage.init_db import create_tables, ensure_qdrant_collection
@@ -90,6 +91,7 @@ def create_app() -> FastAPI:
     application.include_router(health_router.router, prefix=prefix, tags=["health"])
     application.include_router(ingest_router.router, prefix=prefix, tags=["ingestion"])
     application.include_router(query_router.router, prefix=prefix, tags=["query"])
+    application.include_router(stream_router.router, prefix=prefix, tags=["query"])
     application.include_router(eval_router.router, prefix=prefix, tags=["evaluation"])
 
     # ── Global exception handler ──────────────────────────────────────
