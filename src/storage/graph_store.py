@@ -136,6 +136,7 @@ class GraphStore:
             FROM graph_walk gw
             JOIN entities e ON e.id = gw.entity_id
             ORDER BY gw.depth, e.name
+            LIMIT 200
         """)
 
         result = await self._db.execute(sql, params)

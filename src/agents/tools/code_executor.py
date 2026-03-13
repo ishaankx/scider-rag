@@ -89,7 +89,7 @@ class CodeExecutorTool(BaseTool):
                 mode="w", suffix=".py", delete=False
             ) as f:
                 # Wrap with resource limits
-                wrapper = _build_wrapper(code, self._max_memory_mb)
+                wrapper = _build_wrapper(code, self._max_memory_mb, self._timeout)
                 f.write(wrapper)
                 f.flush()
                 temp_path = f.name
@@ -126,6 +126,10 @@ class CodeExecutorTool(BaseTool):
 
             except asyncio.TimeoutError:
                 process.kill()
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=2)
+                except asyncio.TimeoutError:
+                    pass  # Process refused to die — OS will reap it
                 return ToolResult(
                     output="",
                     success=False,
@@ -140,13 +144,36 @@ class CodeExecutorTool(BaseTool):
 
 
 def _check_imports(code: str) -> str | None:
-    """Check if code tries to import blocked modules."""
+    """Check imports against the allowlist. Only ALLOWED_IMPORTS may be used."""
     for line in code.split("\n"):
         stripped = line.strip()
         if stripped.startswith("import ") or stripped.startswith("from "):
+            # Explicitly blocked modules (fast reject)
             for blocked in BLOCKED_IMPORTS:
                 if blocked in stripped:
                     return blocked
+
+            # Allowlist enforcement: extract module name and verify
+            module = _extract_module_name(stripped)
+            if module and module not in ALLOWED_IMPORTS:
+                return module
+    return None
+
+
+def _extract_module_name(statement: str) -> str | None:
+    """Extract the top-level module name from an import statement."""
+    # "from foo.bar import baz" → "foo"
+    # "import foo" → "foo"
+    # "import foo.bar" → "foo"
+    statement = statement.strip()
+    if statement.startswith("from "):
+        parts = statement[5:].split()
+        if parts:
+            return parts[0].split(".")[0]
+    elif statement.startswith("import "):
+        parts = statement[7:].split(",")[0].split()
+        if parts:
+            return parts[0].split(".")[0]
     return None
 
 
@@ -167,7 +194,7 @@ def _check_dangerous_patterns(code: str) -> str | None:
     return None
 
 
-def _build_wrapper(user_code: str, max_memory_mb: int) -> str:
+def _build_wrapper(user_code: str, max_memory_mb: int, cpu_timeout: int = 10) -> str:
     """Wrap user code with resource limits."""
     return f"""
 import resource
@@ -177,8 +204,8 @@ import sys
 memory_bytes = {max_memory_mb} * 1024 * 1024
 resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
 
-# Restrict CPU time
-resource.setrlimit(resource.RLIMIT_CPU, (10, 10))
+# Restrict CPU time (synced with sandbox_timeout_seconds)
+resource.setrlimit(resource.RLIMIT_CPU, ({cpu_timeout}, {cpu_timeout}))
 
 # Run user code
 try:

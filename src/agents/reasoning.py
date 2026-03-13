@@ -111,6 +111,10 @@ class ReasoningAgent(BaseAgent):
                 try:
                     func_args = json.loads(tool_call.function.arguments)
                 except json.JSONDecodeError:
+                    logger.warning(
+                        "Failed to parse tool arguments for %s: %s",
+                        func_name, tool_call.function.arguments[:200],
+                    )
                     func_args = {}
 
                 # Execute the tool
@@ -217,6 +221,10 @@ class ReasoningAgent(BaseAgent):
                 try:
                     func_args = json.loads(tool_call.function.arguments)
                 except json.JSONDecodeError:
+                    logger.warning(
+                        "Failed to parse tool arguments for %s: %s",
+                        func_name, tool_call.function.arguments[:200],
+                    )
                     func_args = {}
 
                 yield ("status", {

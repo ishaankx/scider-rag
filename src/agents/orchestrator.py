@@ -109,12 +109,20 @@ class AgentOrchestrator:
             total_timeout = self._settings.llm_timeout_seconds * 3
 
             try:
-                # Double-check cache after acquiring lock
                 if not lock_acquired:
-                    cached = await self._cache.get(question, filters)
-                    if cached:
-                        result = cached
-                    else:
+                    # Another request holds the lock — wait for it to populate the cache.
+                    # Retry a few times before falling through to run our own pipeline.
+                    result = None
+                    for _attempt in range(3):
+                        await asyncio.sleep(1.0)
+                        cached = await self._cache.get(question, filters)
+                        if cached:
+                            logger.info("Cache populated by another request for: %s", question[:60])
+                            result = cached
+                            break
+
+                    if result is None:
+                        # Lock holder may have failed — run pipeline ourselves
                         result = await asyncio.wait_for(
                             self._run_pipeline(question, filters, max_sources),
                             timeout=total_timeout,
@@ -216,14 +224,16 @@ class AgentOrchestrator:
             lock_acquired = await self._cache.acquire_lock(question)
 
             try:
-                # Double-check cache after acquiring lock
                 if not lock_acquired:
-                    cached = await self._cache.get(question, filters)
-                    if cached:
-                        yield ("status", {"step": "cache_check", "message": "Cache populated by another request"})
-                        result = cached
-                    else:
-                        result = None
+                    # Another request holds the lock — wait for cache to be populated
+                    result = None
+                    for _attempt in range(3):
+                        await asyncio.sleep(1.0)
+                        cached = await self._cache.get(question, filters)
+                        if cached:
+                            yield ("status", {"step": "cache_check", "message": "Cache populated by another request"})
+                            result = cached
+                            break
                 else:
                     result = None
 
