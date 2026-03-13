@@ -11,6 +11,7 @@ Tests:
   5. Grounding   — hallucination detection flags unsupported claims
   6. Evaluation  — systematic scoring across N questions (LLM-as-judge)
   7. Sandbox     — safe code runs; dangerous patterns are blocked at tool level
+  8. Streaming   — SSE reasoning trace with live pipeline visibility
 """
 
 import asyncio
@@ -53,7 +54,7 @@ def show_qa(question: str, answer: str, max_a: int = 200) -> None:
 async def test_query_api(client: httpx.AsyncClient) -> None:
     header("TEST 1 — Query API: answer + sources + latency breakdown")
 
-    question = "How does CRISPR-Cas9 achieve site-specific DNA cleavage?"
+    question = "How does the self-attention mechanism work in the Transformer architecture?"
     resp = await client.post("/query", json={"question": question, "max_sources": 3})
 
     assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
@@ -88,7 +89,7 @@ async def test_caching(client: httpx.AsyncClient) -> None:
 
     # Use a unique run ID so the question is never in cache from a prior run
     run_id = uuid.uuid4().hex[:8]
-    question = f"What are the therapeutic applications of CRISPR in medicine? [run-{run_id}]"
+    question = f"What is Grover's algorithm and how does it achieve quantum speedup over classical search? [run-{run_id}]"
 
     # First call — guaranteed cache miss (unique question)
     t0 = time.perf_counter()
@@ -116,16 +117,16 @@ async def test_caching(client: httpx.AsyncClient) -> None:
     # Ingest a new document → increments the Redis cache version key
     # Use run_id to make content unique so dedup never blocks this
     new_content = (
-        f"CRISPR-Cas13 is an RNA-targeting CRISPR system used for RNA knockdown "
-        f"and diagnostics. Unlike Cas9, it does not edit the genome. [run-{run_id}]"
+        f"Quantum error correction is essential for fault-tolerant quantum computation. "
+        f"Surface codes provide a practical path to scalable quantum computers. [run-{run_id}]"
     )
-    tmp_path = f"/tmp/crispr_cas13_{run_id}.txt"
+    tmp_path = f"/tmp/quantum_error_correction_{run_id}.txt"
     with open(tmp_path, "w") as f:
         f.write(new_content)
     with open(tmp_path, "rb") as f:
         ingest_resp = await client.post(
             "/ingest",
-            files={"file": (f"crispr_cas13_{run_id}.txt", f, "text/plain")},
+            files={"file": (f"quantum_error_correction_{run_id}.txt", f, "text/plain")},
         )
     assert ingest_resp.status_code == 200, f"Ingest failed: {ingest_resp.text}"
     ok("New document ingested — Redis cache version incremented")
@@ -149,14 +150,17 @@ async def test_concurrency(client: httpx.AsyncClient) -> None:
     header("TEST 3 — Concurrency: 8 parallel queries with no pipeline interference")
 
     questions = [
-        "What is CRISPR-Cas9?",
-        "How do guide RNAs work in gene editing?",
-        "What is off-target editing and why is it a problem?",
-        "How is CRISPR used in gene therapy?",
-        "What compounds appear in the scientific dataset?",
-        "What diseases are mentioned in the research data?",
-        "What is homology-directed repair?",
-        "What are the ethical concerns with CRISPR editing?",
+        # AI/ML — Transformer, BERT, GPT-3
+        "What is the Transformer architecture and why did it replace RNNs?",
+        "How does BERT's masked language model pre-training work?",
+        "What is few-shot learning in GPT-3 and how does it differ from fine-tuning?",
+        # Quantum computing — Grover's algorithm
+        "How does Grover's quantum search algorithm achieve sqrt(N) speedup?",
+        "What is quantum superposition and how is it used in database search?",
+        # Biology — CRISPR, cancer genomics
+        "What are CRISPR-Cas adaptive immune systems in bacteria?",
+        "What drug sensitivity biomarkers are used in cancer cell lines?",
+        "How does the GDSC database help identify therapeutic targets?",
     ]
 
     info(f"Firing {len(questions)} queries simultaneously...")
@@ -194,8 +198,8 @@ async def test_graph_traversal(client: httpx.AsyncClient) -> None:
     header("TEST 4 — Graph traversal: entity relationship queries")
 
     question = (
-        "What genes and diseases are related to CRISPR gene editing? "
-        "Please explore the relationships between these entities using the graph tool."
+        "What entities and relationships connect the Transformer architecture to BERT and GPT-3? "
+        "Please explore using the graph tool."
     )
     resp = await client.post("/query", json={"question": question, "max_sources": 5})
     assert resp.status_code == 200, f"Query failed: {resp.text}"
@@ -207,7 +211,7 @@ async def test_graph_traversal(client: httpx.AsyncClient) -> None:
     ok(f"Sources used: {len(data['sources'])}")
     info("")
     info("How graph traversal works:")
-    info("  During ingestion, the LLM extracts entities (gene, disease, protein, etc.)")
+    info("  During ingestion, the LLM extracts entities (model, algorithm, technique, etc.)")
     info("  and their relationships, stored in PostgreSQL.")
     info("  The graph_traverse tool uses a recursive CTE:")
     info("    WITH RECURSIVE graph_walk AS (")
@@ -222,7 +226,7 @@ async def test_graph_traversal(client: httpx.AsyncClient) -> None:
 async def test_grounding(client: httpx.AsyncClient) -> None:
     header("TEST 5 — Grounding: hallucination detection flags unsupported claims")
 
-    question = "What specific enzymes does CRISPR-Cas9 use and how do they work?"
+    question = "What is Grover's quantum search algorithm and what computational complexity does it achieve?"
 
     # With grounding enabled
     resp = await client.post("/query", json={
@@ -254,7 +258,7 @@ async def test_grounding(client: httpx.AsyncClient) -> None:
         ok("All claims grounded in sources — no hallucination detected")
 
     # Verify default (check_grounding=False) returns null grounding
-    resp2 = await client.post("/query", json={"question": "How does CRISPR work?", "check_grounding": False})
+    resp2 = await client.post("/query", json={"question": "What is multi-head attention?", "check_grounding": False})
     assert resp2.json().get("grounding") is None, "grounding should be null when not requested"
     ok("grounding=null when check_grounding=False — no extra LLM cost by default")
 
@@ -279,21 +283,26 @@ async def test_evaluation(client: httpx.AsyncClient) -> None:
 
     questions = [
         {
-            "question": "How does CRISPR-Cas9 achieve site-specific cleavage?",
+            "question": "How does scaled dot-product attention work in the Transformer?",
             "expected_answer": (
-                "Cas9 uses a guide RNA to locate the target DNA sequence "
-                "and creates a double-strand break at the PAM site."
+                "Scaled dot-product attention computes compatibility between queries and keys "
+                "by taking their dot product, scaling by sqrt(d_k), applying softmax, "
+                "then multiplying by the values to produce the output."
             ),
         },
         {
-            "question": "What is the PAM sequence requirement for Cas9?",
-            "expected_answer": "Cas9 requires an NGG PAM sequence adjacent to the target site.",
+            "question": "What quantum speedup does Grover's algorithm achieve for unstructured search?",
+            "expected_answer": (
+                "Grover's algorithm searches an unsorted database of N items in O(sqrt(N)) "
+                "time, a quadratic speedup over the classical O(N) approach."
+            ),
         },
         {
-            "question": "What repair mechanisms are activated after CRISPR cutting?",
+            "question": "How does the GDSC database identify drug sensitivity biomarkers in cancer?",
             "expected_answer": (
-                "NHEJ (error-prone, causes indels) and HDR (precise, "
-                "requires donor template) repair pathways are activated."
+                "GDSC screens hundreds of cancer cell lines against anticancer drugs, "
+                "linking drug sensitivity to genomic features like mutations, "
+                "gene amplification, and deletions to discover therapeutic biomarkers."
             ),
         },
     ]
@@ -396,6 +405,109 @@ async def test_sandbox(client: httpx.AsyncClient) -> None:
             fail(f"BLOCKED  {label}  ← should have been allowed: {result.error}")
 
 
+# ── 8. STREAMING / REASONING TRACE ───────────────────────────────────────────
+
+async def test_streaming(client: httpx.AsyncClient) -> None:
+    header("TEST 8 — Streaming: SSE reasoning trace with live pipeline events")
+
+    info("What this tests:")
+    info("  • POST /query/stream returns Server-Sent Events")
+    info("  • Events arrive incrementally (status → sources → answer → done)")
+    info("  • Each pipeline step is visible in real time")
+    info("  • Designed for IDE integration — render reasoning as it happens")
+    print()
+
+    question = "How does GPT-3 perform few-shot learning without gradient updates?"
+
+    events = []
+    event_types_seen = set()
+
+    # Read the SSE stream
+    async with client.stream(
+        "POST",
+        "/query/stream",
+        json={"question": question, "max_sources": 3},
+    ) as response:
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+        content_type = response.headers.get("content-type", "")
+        assert "text/event-stream" in content_type, f"Expected text/event-stream, got {content_type}"
+
+        current_event = None
+        async for line in response.aiter_lines():
+            if line.startswith("event: "):
+                current_event = line[7:]
+            elif line.startswith("data: ") and current_event:
+                import json
+                data = json.loads(line[6:])
+                events.append((current_event, data))
+                event_types_seen.add(current_event)
+                current_event = None
+
+    ok(f"Received {len(events)} SSE events")
+
+    # Verify expected event types
+    assert "status" in event_types_seen, "No status events received"
+    ok("status events received (pipeline step updates)")
+
+    assert "sources" in event_types_seen, "No sources event received"
+    ok("sources event received (retrieved documents)")
+
+    assert "answer" in event_types_seen, "No answer event received"
+    ok("answer event received (final synthesized answer)")
+
+    assert "done" in event_types_seen, "No done event received"
+    ok("done event received (complete result with latency)")
+
+    # Show the reasoning trace
+    print()
+    info("Live reasoning trace:")
+    for event_type, data in events:
+        if event_type == "status":
+            step = data.get("step", "?")
+            msg = data.get("message", "")[:90]
+            info(f"  [{step:>12}] {msg}")
+        elif event_type == "sources":
+            info(f"  [     sources] {len(data)} chunks retrieved")
+            for s in data[:2]:
+                info(f"                 [{s.get('relevance_score', 0):.3f}] {s.get('document_title', '?')[:50]}")
+        elif event_type == "answer":
+            info(f"  [      answer] {data.get('text', '')[:100]}...")
+        elif event_type == "done":
+            lat = data.get("latency", {})
+            info(f"  [        done] total={lat.get('total_ms', 0):.0f}ms  "
+                 f"confidence={data.get('confidence', 0):.3f}  "
+                 f"request_id={data.get('request_id', '?')[:12]}")
+
+    # Verify the done event has the full result shape
+    done_events = [d for t, d in events if t == "done"]
+    assert len(done_events) == 1, f"Expected 1 done event, got {len(done_events)}"
+    done_data = done_events[0]
+    assert "answer" in done_data, "done event missing answer"
+    assert "sources" in done_data, "done event missing sources"
+    assert "latency" in done_data, "done event missing latency"
+    assert "request_id" in done_data, "done event missing request_id"
+    ok("done event matches POST /query response shape")
+
+    # Verify event ordering: status events come before sources/answer/done
+    first_status_idx = next(i for i, (t, _) in enumerate(events) if t == "status")
+    first_sources_idx = next(i for i, (t, _) in enumerate(events) if t == "sources")
+    first_answer_idx = next(i for i, (t, _) in enumerate(events) if t == "answer")
+    done_idx = next(i for i, (t, _) in enumerate(events) if t == "done")
+
+    assert first_status_idx < first_sources_idx < first_answer_idx < done_idx, (
+        "Events out of order — expected: status → sources → answer → done"
+    )
+    ok("Event ordering correct: status → sources → answer → done")
+
+    print()
+    info("Why this matters for a scientific IDE:")
+    info("  In Scider, researchers submit complex queries that take 5-15 seconds.")
+    info("  Without streaming, they stare at a spinner. With SSE streaming,")
+    info("  the IDE can show: 'Searching 7 papers... Found 5 chunks...'")
+    info("  'Calling graph_traverse... Synthesizing answer...' — keeping the")
+    info("  researcher engaged and building trust in the reasoning process.")
+
+
 # ── MAIN ─────────────────────────────────────────────────────────────────────
 
 async def main() -> None:
@@ -425,6 +537,7 @@ async def main() -> None:
             ("Grounding / hallucination detection",    test_grounding),
             ("Evaluation framework (LLM-as-judge)",    test_evaluation),
             ("Code sandbox (dangerous patterns blocked)", test_sandbox),
+            ("Streaming (SSE reasoning trace)",           test_streaming),
         ]
 
         for name, fn in tests:
