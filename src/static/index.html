@@ -209,6 +209,12 @@
             background: linear-gradient(90deg, var(--accent-green), var(--accent-teal));
         }
         .src-card .m { font-size: 11px; color: var(--text-muted); }
+        .src-card .badge {
+            display: inline-block; font-size: 10px; padding: 1px 6px;
+            border-radius: 4px; font-weight: 600; margin-left: 6px;
+            vertical-align: middle;
+        }
+        .badge-figure { background: rgba(248,81,73,0.15); color: var(--accent-red); }
         .src-card .preview {
             font-size: 11px; color: var(--text-secondary);
             margin-top: 6px; line-height: 1.4;
@@ -439,13 +445,14 @@ function showSources(el, sources) {
     const grid = el.querySelector('.src-grid');
     sources.forEach(s => {
         const pct = (s.relevance_score * 100).toFixed(0);
+        const hasFigure = (s.chunk_content || '').includes('[Figure on page');
         const c = document.createElement('div');
         c.className = 'src-card';
         c.onclick = () => c.classList.toggle('open');
         c.innerHTML = `
             <div class="t">${esc(s.document_title)}</div>
             <div class="bar"><div class="fill" style="width:${pct}%"></div></div>
-            <div class="m">${pct}% relevance${s.page_number ? ' &middot; p.' + s.page_number : ''}</div>
+            <div class="m">${pct}% relevance${s.page_number ? ' &middot; p.' + s.page_number : ''}${hasFigure ? '<span class="badge badge-figure">Figure</span>' : ''}</div>
             <div class="preview">${esc((s.chunk_content || '').slice(0, 220))}&hellip;</div>`;
         grid.appendChild(c);
     });

@@ -368,8 +368,13 @@ async def test_sandbox(client: httpx.AsyncClient) -> None:
     # Part B: Direct sandbox tool tests (no subprocess-in-subprocess)
     info("Direct tool-level tests (bypassing HTTP API):")
     print()
-    from src.config import get_settings
-    from src.agents.tools.code_executor import CodeExecutorTool
+    try:
+        from src.config import get_settings
+        from src.agents.tools.code_executor import CodeExecutorTool
+    except ImportError:
+        info("Skipping direct sandbox tests (app dependencies not installed locally).")
+        info("These run inside the Docker container. The HTTP-level test above covers the feature.")
+        return
 
     tool = CodeExecutorTool(get_settings())
 

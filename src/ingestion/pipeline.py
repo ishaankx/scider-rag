@@ -110,6 +110,8 @@ class IngestionPipeline:
                 "title": extracted.title,
                 "chunks_created": 0,
                 "entities_extracted": 0,
+                "ocr_pages": extracted.metadata.get("ocr_pages", 0),
+                "images_analyzed": extracted.metadata.get("images_analyzed", 0),
             }
 
         # Step 4: Generate embeddings
@@ -170,6 +172,8 @@ class IngestionPipeline:
             "title": extracted.title,
             "chunks_created": len(chunks),
             "entities_extracted": entity_count,
+            "ocr_pages": extracted.metadata.get("ocr_pages", 0),
+            "images_analyzed": extracted.metadata.get("images_analyzed", 0),
         }
 
     async def _extract_entities(

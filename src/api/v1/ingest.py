@@ -112,6 +112,8 @@ async def ingest_document(
         source_type=source_type,
         chunks_created=result["chunks_created"],
         entities_extracted=result["entities_extracted"],
+        ocr_pages=result.get("ocr_pages", 0),
+        images_analyzed=result.get("images_analyzed", 0),
     )
 
 
@@ -132,6 +134,8 @@ async def list_documents(
                 title=d.title,
                 source_type=d.source_type,
                 chunk_count=d.chunk_count,
+                ocr_pages=(d.metadata_ or {}).get("ocr_pages", 0),
+                images_analyzed=(d.metadata_ or {}).get("images_analyzed", 0),
                 created_at=d.created_at.isoformat(),
             )
             for d in docs
