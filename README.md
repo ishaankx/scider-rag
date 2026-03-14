@@ -68,6 +68,45 @@ A successful response with `chunks_created > 0` confirms OCR is working. This fi
 
 To disable OCR (faster ingestion, no vision API cost), set `ENABLE_OCR=false` in `.env`.
 
+### End-to-End Walkthrough
+
+After starting the stack, here's the full flow from ingestion to query response:
+
+```bash
+# 1. Check all services are healthy
+curl -s http://localhost:8001/api/v1/health | python3 -m json.tool
+# Expected: {"status": "healthy", "services": {"postgres": "ok", "redis": "ok", "qdrant": "ok"}}
+
+# 2. Ingest a scientific paper
+curl -s -X POST http://localhost:8001/api/v1/ingest \
+  -F "file=@tests/fixtures/sample_paper.txt;type=text/plain" | python3 -m json.tool
+# Expected: {"document_id": "...", "chunks_created": N, "entities_extracted": N, ...}
+
+# 3. Verify the document is stored
+curl -s http://localhost:8001/api/v1/documents | python3 -m json.tool
+# Expected: list of ingested documents with titles and chunk counts
+
+# 4. Query the pipeline (JSON response)
+curl -s -X POST http://localhost:8001/api/v1/query \
+  -H "Content-Type: application/json" \
+  -d '{"question": "How does CRISPR-Cas9 work?", "max_sources": 3}' | python3 -m json.tool
+# Expected: {"answer": "...", "sources": [...], "latency": {"retrieval_ms": ..., "reasoning_ms": ..., "total_ms": ...}, "confidence": 0.xx}
+
+# 5. Query with streaming (SSE events)
+curl -N -X POST http://localhost:8001/api/v1/query/stream \
+  -H "Content-Type: application/json" \
+  -d '{"question": "How does CRISPR-Cas9 work?", "max_sources": 3}'
+# Expected: event: status → event: sources → event: answer → event: done
+
+# 6. Query with hallucination detection
+curl -s -X POST http://localhost:8001/api/v1/query \
+  -H "Content-Type: application/json" \
+  -d '{"question": "How does CRISPR-Cas9 work?", "check_grounding": true}' | python3 -m json.tool
+# Expected: same as step 4, plus "grounding": {"supported_claims": [...], "confidence": 0.xx}
+```
+
+You can also open `http://localhost:8001` in a browser to use the chat UI, which consumes the streaming endpoint and renders the full reasoning trace visually.
+
 ---
 
 ## Requirements
