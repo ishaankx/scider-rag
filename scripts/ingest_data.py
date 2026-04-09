@@ -16,7 +16,7 @@ from pathlib import Path
 import httpx
 
 API_BASE = os.getenv("API_BASE", "http://localhost:8001/api/v1")
-TIMEOUT = 120.0
+TIMEOUT = 300.0
 SUPPORTED = {".pdf", ".txt", ".csv", ".json"}
 
 MIME = {
